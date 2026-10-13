@@ -30,10 +30,9 @@ public class SecurityConfig {
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(
-                                HttpMethod.GET,
-                                "/api/v1/payments/health"
-                        ).permitAll()
+                        // Allow service-specific health and actuator health/info without auth
+                        .requestMatchers(HttpMethod.GET, "/api/v1/payments/health").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info", "/actuator/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(
