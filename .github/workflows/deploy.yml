@@ -1,0 +1,47 @@
+
+name: Project5 CD
+
+on:
+  workflow_run:
+    workflows: ["Project5 Docker Publish"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: project5-vps-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy Identity Service to VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script_stop: true
+          script: |
+            set -e
+            cd /opt/project5
+
+            docker compose -f docker-compose-vps.yml pull identity-service
+
+            docker compose -f docker-compose-vps.yml up -d \
+              --no-deps identity-service
+
+            sleep 35
+
+            docker compose -f docker-compose-vps.yml ps
+
+            curl --fail --silent --show-error \
+              http://127.0.0.1:8081/actuator/health
+
+            echo "Project5 Identity Service deployment completed"
