@@ -1,0 +1,8 @@
+rootProject.name = 'omnichannel-platform'
+
+include 'backend:api-gateway'
+include 'backend:identity-service'
+include 'backend:product-service'
+include 'backend:order-service'
+include 'backend:payment-service'
+include 'backend:notification-service'

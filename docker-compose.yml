@@ -1,0 +1,251 @@
+version: '3.8'
+
+networks:
+  omnichannel-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  mongo_data:
+  redis_data:
+  rabbitmq_data:
+  elasticsearch_data:
+
+services:
+  # Infrastructure Services
+  postgresql-db:
+    image: postgres:16-alpine
+    container_name: postgresql-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-postgres-dbs.sql:/docker-entrypoint-initdb.d/init-postgres-dbs.sql
+    networks:
+      - omnichannel-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - omnichannel-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "${RABBITMQ_PORT}:5672"
+      - "${RABBITMQ_MGMT_PORT}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - omnichannel-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: elasticsearch:8.11.3
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=${ELASTIC_JAVA_OPTS}"
+    ports:
+      - "${ELASTICSEARCH_PORT}:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - omnichannel-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cat/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # Spring Boot Microservices
+  identity-service:
+    build:
+      context: .
+      dockerfile: backend/identity-service/Dockerfile
+    container_name: identity-service
+    environment:
+      PORT: 8081
+      DB_HOST: postgresql-db
+      DB_PORT: 5432
+      DB_NAME: identity_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "${IDENTITY_PORT}:8081"
+    depends_on:
+      postgresql-db:
+        condition: service_healthy
+    networks:
+      - omnichannel-network
+
+  product-service:
+    build:
+      context: .
+      dockerfile: backend/product-service/Dockerfile
+    container_name: product-service
+    environment:
+      PORT: 8082
+      DB_HOST: postgresql-db
+      DB_PORT: 5432
+      DB_NAME: product_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      ELASTICSEARCH_URIS: http://elasticsearch:9200
+      JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "${PRODUCT_PORT}:8082"
+    depends_on:
+      postgresql-db:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - omnichannel-network
+
+  order-service:
+    build:
+      context: .
+      dockerfile: backend/order-service/Dockerfile
+    container_name: order-service
+    environment:
+      PORT: 8083
+      DB_HOST: postgresql-db
+      DB_PORT: 5432
+      DB_NAME: order_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+    ports:
+      - "${ORDER_PORT}:8083"
+    depends_on:
+      postgresql-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - omnichannel-network
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: backend/payment-service/Dockerfile
+    container_name: payment-service
+    environment:
+      PORT: 8084
+      DB_HOST: postgresql-db
+      DB_PORT: 5432
+      DB_NAME: payment_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+    ports:
+      - "${PAYMENT_PORT}:8084"
+    depends_on:
+      postgresql-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - omnichannel-network
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: backend/notification-service/Dockerfile
+    container_name: notification-service
+    environment:
+      PORT: 8085
+      DB_HOST: postgresql-db
+      DB_PORT: 5432
+      DB_NAME: notification_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+    ports:
+      - "${NOTIFICATION_PORT}:8085"
+    depends_on:
+      postgresql-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - omnichannel-network
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: backend/api-gateway/Dockerfile
+    container_name: api-gateway
+    environment:
+      PORT: 8080
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      IDENTITY_SERVICE_HOST: identity-service
+      IDENTITY_SERVICE_PORT: 8081
+      PRODUCT_SERVICE_HOST: product-service
+      PRODUCT_SERVICE_PORT: 8082
+      ORDER_SERVICE_HOST: order-service
+      ORDER_SERVICE_PORT: 8083
+      PAYMENT_SERVICE_HOST: payment-service
+      PAYMENT_SERVICE_PORT: 8084
+      NOTIFICATION_SERVICE_HOST: notification-service
+      NOTIFICATION_SERVICE_PORT: 8085
+    ports:
+      - "${GATEWAY_PORT}:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      product-service:
+        condition: service_started
+      order-service:
+        condition: service_started
+      payment-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
+    networks:
+      - omnichannel-network

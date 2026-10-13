@@ -1,0 +1,223 @@
+openapi: 3.0.3
+info:
+  title: Order & Inventory Service API
+  description: API tạo đơn hàng, quản lý tồn kho và điều phối Saga cho Omnichannel E-Commerce Platform.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1/orders
+    description: API Gateway Endpoint
+  - url: http://localhost:8083/api/v1/orders
+    description: Direct Service Endpoint
+
+paths:
+  /:
+    post:
+      summary: Tạo đơn hàng mới và tạm giữ kho (Idempotent API)
+      operationId: createOrder
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          example: idempotency-uuid-101
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Đơn hàng tạo thành công (PENDING_PAYMENT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '409':
+          description: Sản phẩm hết hàng hoặc Idempotency key bị trùng
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+    get:
+      summary: Lấy danh sách đơn hàng của người dùng hiện tại
+      operationId: getUserOrders
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderPageResponse'
+
+  /{id}:
+    get:
+      summary: Lấy chi tiết đơn hàng theo Order ID
+      operationId: getOrderById
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+
+  /{id}/cancel:
+    post:
+      summary: Hủy đơn hàng (Khách hàng hủy khi đang PENDING)
+      operationId: cancelOrder
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Hủy đơn thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    CreateOrderRequest:
+      type: object
+      required:
+        - items
+        - shippingAddressId
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItemRequest'
+        shippingAddressId:
+          type: string
+          format: uuid
+          example: 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d
+
+    OrderItemRequest:
+      type: object
+      required:
+        - skuCode
+        - quantity
+      properties:
+        skuCode:
+          type: string
+          example: SKU-NIKE-BLK-M
+        quantity:
+          type: integer
+          minimum: 1
+          example: 1
+
+    OrderResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        orderNumber:
+          type: string
+          example: ORD-20261008-001
+        customerId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          example: PENDING_PAYMENT
+        totalAmount:
+          type: number
+          example: 450000
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItemResponse'
+        createdAt:
+          type: string
+          format: date-time
+
+    OrderItemResponse:
+      type: object
+      properties:
+        skuCode:
+          type: string
+        productName:
+          type: string
+        price:
+          type: number
+        quantity:
+          type: integer
+
+    OrderPageResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderResponse'
+        pageNumber:
+          type: integer
+        pageSize:
+          type: integer
+        totalElements:
+          type: integer
+
+    ProblemDetails:
+      type: object
+      properties:
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+
+  responses:
+    400BadRequest:
+      description: Dữ liệu không hợp lệ
+    401Unauthorized:
+      description: Chưa xác thực
+    404NotFound:
+      description: Không tìm thấy đơn hàng

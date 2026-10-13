@@ -1,0 +1,241 @@
+openapi: 3.0.3
+info:
+  title: Product Catalog & Search Service API
+  description: API quản lý sản phẩm, danh mục, thương hiệu và tìm kiếm Elasticsearch cho Omnichannel E-Commerce Platform.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1/products
+    description: API Gateway Endpoint
+  - url: http://localhost:8082/api/v1/products
+    description: Direct Service Endpoint
+
+paths:
+  /:
+    get:
+      summary: Lấy danh sách sản phẩm phân trang
+      operationId: getProducts
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: categoryId
+          in: query
+          schema:
+            type: string
+        - name: brandId
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductPageResponse'
+    post:
+      summary: Tạo sản phẩm mới (Admin only)
+      operationId: createProduct
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProductRequest'
+      responses:
+        '201':
+          description: Tạo sản phẩm thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+
+  /search:
+    get:
+      summary: Tìm kiếm sản phẩm full-text bằng Elasticsearch
+      operationId: searchProducts
+      parameters:
+        - name: keyword
+          in: query
+          required: true
+          schema:
+            type: string
+          example: iPhone
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: minPrice
+          in: query
+          schema:
+            type: number
+        - name: maxPrice
+          in: query
+          schema:
+            type: number
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Kết quả tìm kiếm
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductPageResponse'
+
+  /{id}:
+    get:
+      summary: Lấy chi tiết sản phẩm theo ID
+      operationId: getProductById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    CreateProductRequest:
+      type: object
+      required:
+        - name
+        - categoryId
+        - brandId
+        - variants
+      properties:
+        name:
+          type: string
+          example: Áo Thun Nike Sportwear
+        description:
+          type: string
+          example: Áo thun thể thao cao cấp
+        categoryId:
+          type: string
+          example: 651f1a2b3c4d5e6f7a8b9c01
+        brandId:
+          type: string
+          example: 651f1a2b3c4d5e6f7a8b9c02
+        images:
+          type: array
+          items:
+            type: string
+        variants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductVariantDTO'
+
+    ProductVariantDTO:
+      type: object
+      required:
+        - skuCode
+        - regularPrice
+      properties:
+        skuCode:
+          type: string
+          example: SKU-NIKE-BLK-M
+        variantName:
+          type: string
+          example: Đen / Size M
+        regularPrice:
+          type: number
+          example: 500000
+        salePrice:
+          type: number
+          example: 450000
+
+    ProductResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        categoryId:
+          type: string
+        brandId:
+          type: string
+        status:
+          type: string
+        variants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductVariantDTO'
+
+    ProductPageResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductResponse'
+        pageNumber:
+          type: integer
+        pageSize:
+          type: integer
+        totalElements:
+          type: integer
+        totalPages:
+          type: integer
+
+    ProblemDetails:
+      type: object
+      properties:
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+
+  responses:
+    400BadRequest:
+      description: Lỗi đầu vào
+    401Unauthorized:
+      description: Chưa xác thực
+    403Forbidden:
+      description: Không có quyền truy cập
+    404NotFound:
+      description: Không tìm thấy sản phẩm

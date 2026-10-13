@@ -1,0 +1,49 @@
+﻿Path for java installation 'C:\Users\Admin\.jdks\openjdk-25.0.1' (IntelliJ IDEA) does not contain a java executable
+> Task :backend:product-service:extractIncludeProto UP-TO-DATE
+> Task :backend:product-service:extractProto UP-TO-DATE
+> Task :backend:product-service:generateProto UP-TO-DATE
+> Task :backend:product-service:compileJava UP-TO-DATE
+> Task :backend:product-service:processResources UP-TO-DATE
+> Task :backend:product-service:classes UP-TO-DATE
+> Task :backend:product-service:extractIncludeTestProto UP-TO-DATE
+> Task :backend:product-service:extractTestProto UP-TO-DATE
+> Task :backend:product-service:generateTestProto NO-SOURCE
+> Task :backend:product-service:compileTestJava UP-TO-DATE
+> Task :backend:product-service:processTestResources NO-SOURCE
+> Task :backend:product-service:testClasses UP-TO-DATE
+.\gradlew : OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap 
+classpath has been appended
+At line:2 char:17
++ ... :\Project5; .\gradlew :backend:product-service:test 2>&1 > test_outpu ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (OpenJDK 64-Bit ...s been appended:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+> Task :backend:product-service:test
+
+ProductServiceImplTest > testUpdateProductSuccess() FAILED
+    org.mockito.exceptions.misusing.UnnecessaryStubbingException at MockitoExtension.java:192
+
+24 tests completed, 1 failed
+
+> Task :backend:product-service:test FAILED
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.5/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':backend:product-service:test'.
+> There were failing tests. See the report at: 
+file:///D:/Project5/backend/product-service/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to get full insights.
+
+BUILD FAILED in 4s
+9 actionable tasks: 1 executed, 8 up-to-date

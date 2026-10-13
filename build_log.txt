@@ -1,0 +1,50 @@
+﻿To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.5/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Path for java installation 'C:\Users\Admin\.jdks\openjdk-25.0.1' (IntelliJ IDEA) does not contain a java executable
+> Task :clean
+> Task :backend:clean
+> Task :backend:api-gateway:clean
+> Task :backend:identity-service:clean
+> Task :backend:notification-service:clean
+> Task :backend:order-service:clean
+> Task :backend:payment-service:clean
+> Task :backend:product-service:clean
+> Task :compileJava NO-SOURCE
+> Task :processResources NO-SOURCE
+> Task :classes UP-TO-DATE
+> Task :jar
+> Task :assemble
+> Task :compileTestJava NO-SOURCE
+> Task :processTestResources NO-SOURCE
+> Task :testClasses UP-TO-DATE
+> Task :test NO-SOURCE
+> Task :check UP-TO-DATE
+> Task :build
+> Task :backend:compileJava NO-SOURCE
+> Task :backend:processResources NO-SOURCE
+> Task :backend:classes UP-TO-DATE
+> Task :backend:resolveMainClassName
+> Task :backend:bootJar FAILED
+11 actionable tasks: 11 executed
+.\gradlew : 
+At line:2 char:17
++ cd d:\Project5; .\gradlew clean build --no-daemon 2>&1 | Tee-Object - ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':backend:bootJar'.
+> Error while evaluating property 'mainClass' of task ':backend:bootJar'.
+   > Failed to calculate the value of task ':backend:bootJar' property 'mainClass'.
+      > Main class name has not been configured and it could not be resolved from classpath 
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 12s

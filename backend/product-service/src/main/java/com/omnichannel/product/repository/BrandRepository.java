@@ -1,0 +1,23 @@
+package com.omnichannel.product.repository;
+
+import com.omnichannel.product.entity.Brand;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+import java.util.UUID;
+
+@Repository
+public interface BrandRepository extends JpaRepository<Brand, UUID> {
+
+    Optional<Brand> findBySlug(String slug);
+
+    boolean existsBySlug(String slug);
+
+    boolean existsBySlugAndIdNot(String slug, UUID id);
+
+    Page<Brand> findByActive(Boolean active, Pageable pageable);
+}
+

@@ -1,0 +1,117 @@
+openapi: 3.0.3
+info:
+  title: Notification Service API
+  description: API truy vấn nhật ký gửi thông báo email và quản lý mẫu mail cho Omnichannel E-Commerce Platform.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1/notifications
+    description: API Gateway Endpoint
+  - url: http://localhost:8085/api/v1/notifications
+    description: Direct Service Endpoint
+
+paths:
+  /logs:
+    get:
+      summary: Lấy lịch sử log gửi thông báo email (Admin only)
+      operationId: getNotificationLogs
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: recipientEmail
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPageResponse'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+
+  /retry/{id}:
+    post:
+      summary: Thử gửi lại email bị lỗi thủ công (Admin only)
+      operationId: retryNotification
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Gửi lại email thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationLogResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    NotificationLogResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        recipientEmail:
+          type: string
+          example: user@example.com
+        notificationType:
+          type: string
+          example: ORDER_CONFIRMATION
+        subject:
+          type: string
+          example: Xác nhận đơn hàng #ORD-8888
+        status:
+          type: string
+          example: SENT
+        errorMessage:
+          type: string
+        retryCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    NotificationPageResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationLogResponse'
+        pageNumber:
+          type: integer
+        pageSize:
+          type: integer
+        totalElements:
+          type: integer
+
+  responses:
+    401Unauthorized:
+      description: Chưa xác thực
+    403Forbidden:
+      description: Không có quyền

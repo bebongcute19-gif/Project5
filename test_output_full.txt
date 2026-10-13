@@ -1,0 +1,124 @@
+﻿To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.5/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Path for java installation 'C:\Users\Admin\.jdks\openjdk-25.0.1' (IntelliJ IDEA) does not contain a java executable
+> Task :compileJava NO-SOURCE
+> Task :processResources NO-SOURCE
+> Task :classes UP-TO-DATE
+> Task :compileTestJava NO-SOURCE
+> Task :processTestResources NO-SOURCE
+> Task :testClasses UP-TO-DATE
+> Task :test NO-SOURCE
+> Task :backend:compileJava NO-SOURCE
+> Task :backend:processResources NO-SOURCE
+> Task :backend:classes UP-TO-DATE
+> Task :backend:compileTestJava NO-SOURCE
+> Task :backend:processTestResources NO-SOURCE
+> Task :backend:testClasses UP-TO-DATE
+> Task :backend:test NO-SOURCE
+> Task :backend:api-gateway:compileJava UP-TO-DATE
+> Task :backend:api-gateway:processResources UP-TO-DATE
+> Task :backend:api-gateway:classes UP-TO-DATE
+> Task :backend:api-gateway:compileTestJava
+> Task :backend:api-gateway:processTestResources NO-SOURCE
+> Task :backend:api-gateway:testClasses
+.\gradlew : OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap 
+classpath has been appended
+At line:2 char:17
++ cd d:\Project5; .\gradlew test --no-daemon 2>&1 | Tee-Object -FilePat ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (OpenJDK 64-Bit ...s been appended:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+> Task :backend:api-gateway:test
+> Task :backend:identity-service:compileJava UP-TO-DATE
+> Task :backend:identity-service:processResources UP-TO-DATE
+> Task :backend:identity-service:classes UP-TO-DATE
+> Task :backend:identity-service:compileTestJava
+> Task :backend:identity-service:processTestResources
+> Task :backend:identity-service:testClasses
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has 
+been appended
+2026-10-11T15:03:21.638+07:00  INFO 32476 --- [identity-service-test] [ionShutdownHook] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-10-11T15:03:21.648+07:00  INFO 32476 --- [identity-service-test] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown initiated...
+2026-10-11T15:03:21.651+07:00  INFO 32476 --- [identity-service-test] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown completed.
+> Task :backend:identity-service:test
+> Task :backend:notification-service:compileJava UP-TO-DATE
+> Task :backend:notification-service:processResources UP-TO-DATE
+> Task :backend:notification-service:classes UP-TO-DATE
+> Task :backend:notification-service:compileTestJava
+> Task :backend:notification-service:processTestResources NO-SOURCE
+> Task :backend:notification-service:testClasses
+> Task :backend:notification-service:test
+> Task :backend:order-service:extractIncludeProto UP-TO-DATE
+> Task :backend:order-service:extractProto UP-TO-DATE
+> Task :backend:order-service:generateProto UP-TO-DATE
+> Task :backend:order-service:compileJava UP-TO-DATE
+> Task :backend:order-service:processResources UP-TO-DATE
+> Task :backend:order-service:classes UP-TO-DATE
+> Task :backend:order-service:extractIncludeTestProto
+> Task :backend:order-service:extractTestProto
+> Task :backend:order-service:generateTestProto NO-SOURCE
+
+> Task :backend:order-service:compileTestJava
+D:\Project5\backend\order-service\src\test\java\com\omnichannel\order\config\TestSecurityConfig.java:38: warning: 
+[removal] csrf() in HttpSecurity has been deprecated and marked for removal
+                .csrf().disable()
+                ^
+Note: D:\Project5\backend\order-service\src\test\java\com\omnichannel\order\service\impl\CartServiceTest.java uses 
+unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+1 warning
+
+> Task :backend:order-service:processTestResources NO-SOURCE
+> Task :backend:order-service:testClasses
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has 
+been appended
+
+> Task :backend:order-service:test
+
+CartControllerTest > testAddToCart_Success() FAILED
+    java.lang.AssertionError at CartControllerTest.java:77
+
+CartControllerTest > testClearCart_Success() FAILED
+    java.lang.AssertionError at CartControllerTest.java:119
+
+CartControllerTest > testGetCart_Success() FAILED
+    java.lang.AssertionError at CartControllerTest.java:105
+
+OrderControllerTest > testCreateOrder_Success() FAILED
+    java.lang.AssertionError at OrderControllerTest.java:100
+
+OrderControllerTest > testCancelOrder_Success() FAILED
+    java.lang.AssertionError at OrderControllerTest.java:168
+
+OrderControllerTest > testGetOrder_Success() FAILED
+    java.lang.AssertionError at OrderControllerTest.java:124
+
+OrderControllerTest > testGetOrders_Customer() FAILED
+    java.lang.AssertionError at OrderControllerTest.java:146
+
+OrderControllerTest > testUpdateOrderStatus_Success() FAILED
+    java.lang.AssertionError at OrderControllerTest.java:194
+
+33 tests completed, 8 failed
+
+> Task :backend:order-service:test FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':backend:order-service:test'.
+> There were failing tests. See the report at: 
+file:///D:/Project5/backend/order-service/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to get full insights.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.5/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 46s
+22 actionable tasks: 11 executed, 11 up-to-date

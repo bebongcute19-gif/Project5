@@ -1,0 +1,8 @@
+// Backend module - container for microservices
+plugins {
+    id 'java'
+}
+
+// This is just a container module, no jar/bootJar needed
+jar.enabled = false
+bootJar.enabled = false

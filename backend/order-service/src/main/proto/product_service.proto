@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package com.omnichannel.product.grpc;
+
+option java_multiple_files = true;
+option java_package = "com.omnichannel.product.grpc";
+
+service ProductGrpcService {
+  rpc GetProductVariants (VariantRequest) returns (VariantResponse);
+}
+
+message VariantRequest {
+  repeated string skuCodes = 1;
+}
+
+message VariantInfo {
+  string skuCode = 1;
+  string productId = 2;
+  string productName = 3;
+  double price = 4;
+  bool isActive = 5;
+  string currency = 6;
+}
+
+message VariantResponse {
+  repeated VariantInfo variants = 1;
+}

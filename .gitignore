@@ -1,0 +1,17 @@
+﻿.gradle/
+**/build/
+.idea/
+*.iml
+out/
+
+.env
+.env.*
+!.env.example
+!.env.sample
+
+*.log
+logs/
+*.pem
+*.key
+*.p12
+*.jks

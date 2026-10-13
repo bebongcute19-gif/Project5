@@ -1,0 +1,151 @@
+openapi: 3.0.3
+info:
+  title: Payment Service API
+  description: API thanh toán mô phỏng, ghi nhận giao dịch và xử lý Webhook cho Omnichannel E-Commerce Platform.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1/payments
+    description: API Gateway Endpoint
+  - url: http://localhost:8084/api/v1/payments
+    description: Direct Service Endpoint
+
+paths:
+  /process:
+    post:
+      summary: Thực thi giao dịch thanh toán mô phỏng (Payment Simulation)
+      operationId: processPayment
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessPaymentRequest'
+      responses:
+        '200':
+          description: Kết quả xử lý thanh toán
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+
+  /webhook/{gateway}:
+    post:
+      summary: Webhook tiếp nhận kết quả từ Cổng thanh toán (VNPay/MoMo/ZaloPay)
+      operationId: paymentWebhook
+      parameters:
+        - name: gateway
+          in: path
+          required: true
+          schema:
+            type: string
+            example: vnpay
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Tiếp nhận Webhook thành công
+
+  /{orderId}:
+    get:
+      summary: Tra cứu trạng thái giao dịch thanh toán theo Order ID
+      operationId: getPaymentByOrderId
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ProcessPaymentRequest:
+      type: object
+      required:
+        - orderId
+        - amount
+        - paymentMethod
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          example: 450000
+        paymentMethod:
+          type: string
+          enum: [VNPAY, MOMO, CREDIT_CARD, MOCK]
+          example: VNPAY
+        simulateStatus:
+          type: string
+          enum: [SUCCESS, FAILED]
+          description: Tham số dùng cho MOCK test (SUCCESS hoặc FAILED)
+          example: SUCCESS
+
+    PaymentResponse:
+      type: object
+      properties:
+        paymentId:
+          type: string
+          format: uuid
+        orderId:
+          type: string
+          format: uuid
+        transactionRef:
+          type: string
+          example: TXN-VNPAY-777
+        amount:
+          type: number
+        paymentMethod:
+          type: string
+        status:
+          type: string
+          example: SUCCESS
+        createdAt:
+          type: string
+          format: date-time
+
+    ProblemDetails:
+      type: object
+      properties:
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+
+  responses:
+    400BadRequest:
+      description: Dữ liệu không hợp lệ
+    401Unauthorized:
+      description: Chưa xác thực
+    404NotFound:
+      description: Không tìm thấy giao dịch

@@ -1,0 +1,313 @@
+openapi: 3.0.3
+info:
+  title: Identity & Access Management Service API
+  description: API quản lý xác thực, người dùng, phân quyền RBAC và địa chỉ giao hàng cho Omnichannel E-Commerce Platform.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1/auth
+    description: API Gateway Endpoint
+  - url: http://localhost:8081/api/v1/auth
+    description: Direct Service Endpoint
+
+paths:
+  /register:
+    post:
+      summary: Đăng ký tài khoản người dùng mới
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Đăng ký tài khoản thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '409':
+          $ref: '#/components/responses/409Conflict'
+
+  /login:
+    post:
+      summary: Đăng nhập và nhận cặp JWT Access/Refresh token
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Đăng nhập thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+
+  /refresh-token:
+    post:
+      summary: Đổi Access Token mới từ Refresh Token
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Cấp lại token thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+
+  /me:
+    get:
+      summary: Lấy thông tin cá nhân của người dùng hiện tại
+      operationId: getCurrentUserProfile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+
+  /addresses:
+    get:
+      summary: Lấy danh sách địa chỉ nhận hàng
+      operationId: getUserAddresses
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AddressResponse'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+    post:
+      summary: Thêm địa chỉ nhận hàng mới
+      operationId: addAddress
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddressRequest'
+      responses:
+        '201':
+          description: Tạo địa chỉ thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddressResponse'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+        - fullName
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          minLength: 8
+          example: Password123!
+        fullName:
+          type: string
+          example: Nguyen Van A
+        phone:
+          type: string
+          example: "0901234567"
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          example: Password123!
+
+    RefreshTokenRequest:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d"
+        email:
+          type: string
+          example: user@example.com
+        fullName:
+          type: string
+          example: Nguyen Van A
+        phone:
+          type: string
+          example: "0901234567"
+        status:
+          type: string
+          example: ACTIVE
+        roles:
+          type: array
+          items:
+            type: string
+          example: ["ROLE_CUSTOMER"]
+        createdAt:
+          type: string
+          format: date-time
+
+    TokenResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          example: "eyJhbGciOiJIUzI1Ni..."
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+          example: 900
+        refreshToken:
+          type: string
+          example: "eyJhbGciOiJIUzI1Ni..."
+
+    AddressRequest:
+      type: object
+      required:
+        - recipientName
+        - phone
+        - streetAddress
+        - ward
+        - district
+        - city
+      properties:
+        recipientName:
+          type: string
+          example: Nguyen Van A
+        phone:
+          type: string
+          example: "0901234567"
+        streetAddress:
+          type: string
+          example: 123 Le Loi
+        ward:
+          type: string
+          example: Phuong Ben Nghe
+        district:
+          type: string
+          example: Quan 1
+        city:
+          type: string
+          example: Thanh pho Ho Chi Minh
+        isDefault:
+          type: boolean
+          example: true
+
+    AddressResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        recipientName:
+          type: string
+        phone:
+          type: string
+        streetAddress:
+          type: string
+        ward:
+          type: string
+        district:
+          type: string
+        city:
+          type: string
+        isDefault:
+          type: boolean
+
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+
+  responses:
+    400BadRequest:
+      description: Dữ liệu đầu vào không hợp lệ
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    401Unauthorized:
+      description: Chưa xác thực hoặc Token không hợp lệ
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    409Conflict:
+      description: Email hoặc tài nguyên đã tồn tại
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
