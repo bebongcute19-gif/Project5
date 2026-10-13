@@ -43,7 +43,7 @@ jobs:
           strip_components: 1
           overwrite: true
 
-      - name: Deploy Identity Service
+      - name: Deploy Identity Service with Rollback
         uses: appleboy/ssh-action@v1
         env:
           IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
@@ -58,39 +58,70 @@ jobs:
             set -e
             cd /opt/project5
 
+            COMPOSE_FILE=docker-compose-vps.yml
+            IMAGE_REPO=ghcr.io/bebongcute19-gif/project5-identity-service
+
             test -f .env
             test -f scripts/init-postgres-dbs.sql
             test -n "$IMAGE_TAG"
 
-            docker compose -f docker-compose-vps.yml config --quiet
+            PREVIOUS_IMAGE=$(docker inspect \
+              project5-identity-service-1 \
+              --format '{{.Config.Image}}')
 
-            docker compose -f docker-compose-vps.yml pull identity-service
+            PREVIOUS_TAG="${PREVIOUS_IMAGE##*:}"
 
-            docker compose -f docker-compose-vps.yml up -d \
-              --no-deps identity-service
+            echo "Previous image: $PREVIOUS_IMAGE"
+            echo "New image tag: $IMAGE_TAG"
 
-            echo "Waiting for Identity Service health..."
-            HEALTHY=false
+            export IMAGE_TAG
 
-            for i in $(seq 1 18); do
-              RESPONSE=$(curl -fsS \
-                http://127.0.0.1:8081/actuator/health || true)
+            docker compose -f "$COMPOSE_FILE" config --quiet
 
-              if echo "$RESPONSE" | grep -q '"status":"UP"'; then
-                HEALTHY=true
-                break
+            docker compose -f "$COMPOSE_FILE" pull identity-service
+
+            check_health() {
+              for i in $(seq 1 18); do
+                RESPONSE=$(curl -fsS \
+                  http://127.0.0.1:8081/actuator/health || true)
+
+                if echo "$RESPONSE" | grep -q '"status":"UP"'; then
+                  return 0
+                fi
+
+                sleep 5
+              done
+
+              return 1
+            }
+
+            echo "Deploying Identity Service..."
+
+            if docker compose -f "$COMPOSE_FILE" up -d \
+              --no-deps identity-service && check_health; then
+
+              echo "$IMAGE_REPO:$IMAGE_TAG" \
+                > identity-last-known-good.txt
+
+              echo "Deployment successful: $IMAGE_TAG"
+
+            else
+              echo "Deployment failed. Starting rollback..."
+
+              export IMAGE_TAG="$PREVIOUS_TAG"
+
+              docker compose -f "$COMPOSE_FILE" up -d \
+                --no-deps identity-service
+
+              if check_health; then
+                echo "Rollback successful: $PREVIOUS_TAG"
+              else
+                echo "Rollback health check failed"
               fi
 
-              sleep 5
-            done
-
-            if [ "$HEALTHY" != "true" ]; then
-              echo "Identity Service health check failed"
-              docker compose -f docker-compose-vps.yml logs \
-                --tail=80 identity-service
               exit 1
             fi
 
-            docker compose -f docker-compose-vps.yml ps
+            docker compose -f "$COMPOSE_FILE" ps
 
-            echo "Project5 CD deployment successful"
+            echo "Project5 CD deployment completed"
