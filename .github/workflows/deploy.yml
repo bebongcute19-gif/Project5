@@ -59,6 +59,7 @@ jobs:
             cd /opt/project5
 
             COMPOSE_FILE=docker-compose-vps.yml
+            CONTAINER=project5-identity-service-1
             IMAGE_REPO=ghcr.io/bebongcute19-gif/project5-identity-service
 
             test -f .env
@@ -66,27 +67,35 @@ jobs:
             test -n "$IMAGE_TAG"
 
             PREVIOUS_IMAGE=$(docker inspect \
-              project5-identity-service-1 \
-              --format '{{.Config.Image}}')
-
+              "$CONTAINER" --format '{{.Config.Image}}')
             PREVIOUS_TAG="${PREVIOUS_IMAGE##*:}"
 
             echo "Previous image: $PREVIOUS_IMAGE"
-            echo "New image tag: $IMAGE_TAG"
+            echo "Deploying image: $IMAGE_REPO:$IMAGE_TAG"
 
             export IMAGE_TAG
 
             docker compose -f "$COMPOSE_FILE" config --quiet
 
-            docker compose -f "$COMPOSE_FILE" pull identity-service
-
             check_health() {
-              for i in $(seq 1 18); do
-                RESPONSE=$(curl -fsS \
-                  http://127.0.0.1:8081/actuator/health || true)
+              EXPECTED_IMAGE="$1"
 
-                if echo "$RESPONSE" | grep -q '"status":"UP"'; then
-                  return 0
+              for i in $(seq 1 18); do
+                ACTUAL_IMAGE=$(docker inspect "$CONTAINER" \
+                  --format '{{.Config.Image}}' 2>/dev/null || true)
+
+                RUNNING=$(docker inspect "$CONTAINER" \
+                  --format '{{.State.Running}}' 2>/dev/null || true)
+
+                if [ "$ACTUAL_IMAGE" = "$EXPECTED_IMAGE" ] && \
+                   [ "$RUNNING" = "true" ]; then
+
+                  RESPONSE=$(curl -fsS \
+                    http://127.0.0.1:8081/actuator/health || true)
+
+                  if echo "$RESPONSE" | grep -q '"status":"UP"'; then
+                    return 0
+                  fi
                 fi
 
                 sleep 5
@@ -95,10 +104,32 @@ jobs:
               return 1
             }
 
-            echo "Deploying Identity Service..."
+            rollback() {
+              echo "Starting rollback to $PREVIOUS_IMAGE"
+
+              export IMAGE_TAG="$PREVIOUS_TAG"
+
+              if docker compose -f "$COMPOSE_FILE" up -d \
+                --no-deps identity-service; then
+
+                if check_health "$PREVIOUS_IMAGE"; then
+                  echo "Rollback successful"
+                  return 0
+                fi
+              fi
+
+              echo "Rollback failed - manual intervention required"
+              return 1
+            }
+
+            if ! docker compose -f "$COMPOSE_FILE" pull identity-service; then
+              echo "Image pull failed"
+              exit 1
+            fi
 
             if docker compose -f "$COMPOSE_FILE" up -d \
-              --no-deps identity-service && check_health; then
+              --no-deps identity-service && \
+              check_health "$IMAGE_REPO:$IMAGE_TAG"; then
 
               echo "$IMAGE_REPO:$IMAGE_TAG" \
                 > identity-last-known-good.txt
@@ -106,22 +137,11 @@ jobs:
               echo "Deployment successful: $IMAGE_TAG"
 
             else
-              echo "Deployment failed. Starting rollback..."
+              echo "Deployment failed"
 
-              export IMAGE_TAG="$PREVIOUS_TAG"
-
-              docker compose -f "$COMPOSE_FILE" up -d \
-                --no-deps identity-service
-
-              if check_health; then
-                echo "Rollback successful: $PREVIOUS_TAG"
-              else
-                echo "Rollback health check failed"
-              fi
+              rollback || true
 
               exit 1
             fi
 
             docker compose -f "$COMPOSE_FILE" ps
-
-            echo "Project5 CD deployment completed"
