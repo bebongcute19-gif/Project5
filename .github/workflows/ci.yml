@@ -1,0 +1,43 @@
+﻿name: Project5 CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Grant Gradle wrapper permission
+        run: chmod +x ./gradlew
+
+      - name: Build and Test all microservices
+        run: ./gradlew clean build --no-daemon --stacktrace
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: project5-test-reports
+          path: |
+            backend/**/build/reports/tests/
+            backend/**/build/test-results/
+          if-no-files-found: ignore
