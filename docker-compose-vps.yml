@@ -1,0 +1,46 @@
+services:
+  postgresql-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_vps_data:/var/lib/postgresql/data
+      - ./scripts/init-postgres-dbs.sql:/docker-entrypoint-initdb.d/init-postgres-dbs.sql:ro
+    networks:
+      - project5-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 256m
+
+  identity-service:
+    image: ghcr.io/bebongcute19-gif/project5-identity-service:latest
+    restart: unless-stopped
+    environment:
+      PORT: 8081
+      DB_HOST: postgresql-db
+      DB_PORT: 5432
+      DB_NAME: identity_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JAVA_TOOL_OPTIONS: "-Xms64m -Xmx192m"
+    ports:
+      - "127.0.0.1:8081:8081"
+    depends_on:
+      postgresql-db:
+        condition: service_healthy
+    networks:
+      - project5-network
+    mem_limit: 384m
+
+networks:
+  project5-network:
+    driver: bridge
+
+volumes:
+  postgres_vps_data:
