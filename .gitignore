@@ -1,4 +1,4 @@
-﻿.gradle/
+.gradle/
 **/build/
 .idea/
 *.iml
@@ -15,3 +15,14 @@ logs/
 *.key
 *.p12
 *.jks
+
+# Compiled Java output
+**/bin/
+*.class
+
+# Local configuration
+
+# Generated logs and test output
+build_log.txt
+test_output*.txt
+test_results.txt
