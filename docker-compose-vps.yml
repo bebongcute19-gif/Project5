@@ -3,8 +3,8 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     volumes:
       - postgres_vps_data:/var/lib/postgresql/data
       - ./scripts/init-postgres-dbs.sql:/docker-entrypoint-initdb.d/init-postgres-dbs.sql:ro
@@ -29,6 +29,23 @@ services:
       retries: 5
     mem_limit: 128m
 
+  rabbitmq:
+    image: rabbitmq:3.11-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+    ports: []
+    networks:
+      - project5-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    mem_limit: 256m
+
   identity-service:
     image: ghcr.io/bebongcute19-gif/project5-identity-service:${IMAGE_TAG:-latest}
     restart: unless-stopped
@@ -39,7 +56,7 @@ services:
       DB_NAME: identity_db
       DB_USER: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JAVA_TOOL_OPTIONS: "-Xms64m -Xmx192m"
     ports:
       - "127.0.0.1:8081:8081"
@@ -60,6 +77,7 @@ services:
       DB_NAME: product_db
       DB_USER: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JAVA_TOOL_OPTIONS: "-Xms128m -Xmx384m"
     ports:
       - "127.0.0.1:8082:8082"
@@ -69,7 +87,7 @@ services:
     networks:
       - project5-network
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8082/actuator/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8082/api/v1/products/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -87,6 +105,11 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JAVA_TOOL_OPTIONS: "-Xms128m -Xmx384m"
     ports:
       - "127.0.0.1:8083:8083"
@@ -95,10 +118,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     networks:
       - project5-network
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8083/actuator/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8083/api/v1/orders/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -114,16 +139,23 @@ services:
       DB_NAME: payment_db
       DB_USER: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m"
     ports:
       - "127.0.0.1:8084:8084"
     depends_on:
       postgresql-db:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     networks:
       - project5-network
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8084/actuator/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8084/api/v1/payments/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -139,16 +171,23 @@ services:
       DB_NAME: notification_db
       DB_USER: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JAVA_TOOL_OPTIONS: "-Xms64m -Xmx192m"
     ports:
       - "127.0.0.1:8085:8085"
     depends_on:
       postgresql-db:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     networks:
       - project5-network
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8085/actuator/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8085/api/v1/notifications/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -171,7 +210,7 @@ services:
       NOTIFICATION_SERVICE_PORT: 8085
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JAVA_TOOL_OPTIONS: "-Xms128m -Xmx384m"
     ports:
       - "0.0.0.0:80:8080"

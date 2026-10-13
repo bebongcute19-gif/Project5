@@ -118,10 +118,10 @@ deploy_service() {
 # Validate files
 docker compose -f "$COMPOSE_FILE" config --quiet
 
-# Pull DB & redis first
-docker compose -f "$COMPOSE_FILE" pull postgresql-db redis
+# Pull DB, redis and rabbitmq first
+docker compose -f "$COMPOSE_FILE" pull postgresql-db redis rabbitmq
 
-docker compose -f "$COMPOSE_FILE" up -d postgresql-db redis
+docker compose -f "$COMPOSE_FILE" up -d postgresql-db redis rabbitmq
 
 # Ensure postgres and redis containers become healthy before proceeding
 # Wait for postgres
@@ -158,6 +158,25 @@ for i in $(seq 1 18); do
   sleep 5
   if [[ $i -eq 18 ]]; then
     echo "Redis failed to become healthy"
+    exit 1
+  fi
+done
+
+# Wait for rabbitmq
+rabbit_container=$(get_container_name "rabbitmq")
+if [[ -z "$rabbit_container" ]]; then
+  echo "RabbitMQ container not found after start"
+  exit 1
+fi
+for i in $(seq 1 18); do
+  status=$(docker inspect "$rabbit_container" --format '{{.State.Health.Status}}' 2>/dev/null || true)
+  if [[ "$status" == "healthy" ]]; then
+    echo "RabbitMQ is healthy"
+    break
+  fi
+  sleep 5
+  if [[ $i -eq 18 ]]; then
+    echo "RabbitMQ failed to become healthy"
     exit 1
   fi
 done
