@@ -20,7 +20,30 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy Identity Service to VPS
+      - name: Checkout published commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Prepare deployment files
+        run: |
+          mkdir -p deploy-package/scripts
+          cp docker-compose-vps.yml deploy-package/
+          cp scripts/init-postgres-dbs.sql deploy-package/scripts/
+
+      - name: Copy deployment files to VPS
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          source: "deploy-package/docker-compose-vps.yml,deploy-package/scripts/init-postgres-dbs.sql"
+          target: "/opt/project5"
+          strip_components: 1
+          overwrite: true
+
+      - name: Deploy Identity Service
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -32,16 +55,38 @@ jobs:
             set -e
             cd /opt/project5
 
+            test -f .env
+            test -f scripts/init-postgres-dbs.sql
+
+            docker compose -f docker-compose-vps.yml config --quiet
+
             docker compose -f docker-compose-vps.yml pull identity-service
 
             docker compose -f docker-compose-vps.yml up -d \
               --no-deps identity-service
 
-            sleep 35
+            echo "Waiting for Identity Service health..."
+            HEALTHY=false
+
+            for i in $(seq 1 18); do
+              RESPONSE=$(curl -fsS \
+                http://127.0.0.1:8081/actuator/health || true)
+
+              if echo "$RESPONSE" | grep -q '"status":"UP"'; then
+                HEALTHY=true
+                break
+              fi
+
+              sleep 5
+            done
+
+            if [ "$HEALTHY" != "true" ]; then
+              echo "Identity Service health check failed"
+              docker compose -f docker-compose-vps.yml logs \
+                --tail=80 identity-service
+              exit 1
+            fi
 
             docker compose -f docker-compose-vps.yml ps
 
-            curl --fail --silent --show-error \
-              http://127.0.0.1:8081/actuator/health
-
-            echo "Project5 Identity Service deployment completed"
+            echo "Project5 CD deployment successful"
