@@ -18,7 +18,7 @@ services:
     mem_limit: 256m
 
   identity-service:
-    image: ghcr.io/bebongcute19-gif/project5-identity-service:latest
+    image: ghcr.io/bebongcute19-gif/project5-identity-service:${IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       PORT: 8081
