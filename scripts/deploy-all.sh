@@ -14,7 +14,7 @@ READINESS_INTERVAL=${READINESS_INTERVAL:-5}
 
 # identity is deployed separately to preserve existing rollback behavior
 services=(product-service order-service payment-service notification-service api-gateway)
-health_urls=("http://127.0.0.1:8082/actuator/health" "http://127.0.0.1:8083/actuator/health" "http://127.0.0.1:8084/actuator/health" "http://127.0.0.1:8085/actuator/health" "http://127.0.0.1:8080/actuator/health")
+health_urls=("http://127.0.0.1:8082/actuator/health" "http://127.0.0.1:8083/actuator/health" "http://127.0.0.1:8084/actuator/health" "http://127.0.0.1:8085/actuator/health" "http://127.0.0.1:80/actuator/health")
 
 pull_all() {
   echo "Pulling images"
