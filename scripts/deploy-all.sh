@@ -8,6 +8,10 @@ mkdir -p "$LKG_DIR"
 
 : "${IMAGE_TAG:?IMAGE_TAG is required}"
 
+# Readiness configuration (seconds)
+READINESS_RETRIES=${READINESS_RETRIES:-18}
+READINESS_INTERVAL=${READINESS_INTERVAL:-5}
+
 # identity is deployed separately to preserve existing rollback behavior
 services=(product-service order-service payment-service notification-service api-gateway)
 health_urls=("http://127.0.0.1:8082/actuator/health" "http://127.0.0.1:8083/actuator/health" "http://127.0.0.1:8084/actuator/health" "http://127.0.0.1:8085/actuator/health" "http://127.0.0.1:8080/actuator/health")
@@ -44,23 +48,52 @@ check_health() {
   local expected_image="$1"
   local container_name="$2"
   local url="$3"
+  local svc="$4"
 
-  for i in $(seq 1 18); do
+  local start_ts=$(date +%s)
+  for i in $(seq 1 "$READINESS_RETRIES"); do
+    # try to discover container if not provided
+    if [[ -z "$container_name" && -n "$svc" ]]; then
+      container_name=$(get_container_name "$svc")
+    fi
+
     actual_image=""
     running=""
     if [[ -n "$container_name" ]]; then
       actual_image=$(docker inspect "$container_name" --format '{{.Config.Image}}' 2>/dev/null || true)
       running=$(docker inspect "$container_name" --format '{{.State.Running}}' 2>/dev/null || true)
     fi
-    # If container not yet known, skip image check and only check health URL
-    if [[ -z "$container_name" || ("$actual_image" == "$expected_image" && "$running" == "true") ]]; then
-      response=$(curl -fsS "$url" 2>/dev/null || true)
-      if [[ "$response" == *'"status":"UP"'* ]]; then
-        return 0
+
+    http_code=""
+    body=""
+    if curl -s -o /tmp/health_body.$$ -w "%{http_code}" "$url" >/tmp/http_code.$$ 2>/dev/null; then
+      http_code=$(cat /tmp/http_code.$$)
+      body=$(cat /tmp/health_body.$$ 2>/dev/null || true)
+      rm -f /tmp/health_body.$$ /tmp/http_code.$$
+    else
+      http_code=""
+    fi
+
+    elapsed=$(( $(date +%s) - start_ts ))
+    echo "check_health attempt $i: container='$container_name' image='$actual_image' running='$running' http_code='$http_code' elapsed='${elapsed}s'" >&2
+
+    if [[ -n "$actual_image" && "$actual_image" != "$expected_image" ]]; then
+      echo "Expected image '$expected_image' but container is running '$actual_image'" >&2
+    fi
+
+    if [[ "$http_code" == "200" ]]; then
+      if [[ "$body" == *'"status":"UP"'* || "$body" == *'UP'* ]]; then
+        if [[ -n "$actual_image" && "$actual_image" == "$expected_image" && "$running" == "true" ]]; then
+          return 0
+        else
+          echo "Health OK but image/state mismatch: container='$container_name' image='$actual_image' running='$running'" >&2
+        fi
       fi
     fi
-    sleep 5
+
+    sleep "$READINESS_INTERVAL"
   done
+
   return 1
 }
 
@@ -88,7 +121,7 @@ deploy_service() {
   if docker compose -f "$COMPOSE_FILE" up -d --no-deps "$svc"; then
     # refresh container name after start
     container_name=$(get_container_name "$svc")
-    if check_health "$NEW_IMAGE" "$container_name" "$url"; then
+    if check_health "$NEW_IMAGE" "$container_name" "$url" "$svc"; then
       echo "$svc deployed: $NEW_IMAGE"
       echo "$NEW_IMAGE" > "$LKG_DIR/${svc}.lkg"
       return 0
@@ -105,10 +138,12 @@ deploy_service() {
     # refresh container name
     container_name=$(get_container_name "$svc")
     expected_prev_image="${PREVIOUS_IMAGE:-ghcr.io/bebongcute19-gif/project5-${svc}:$rollback_tag}"
-    if check_health "$expected_prev_image" "$container_name" "$url"; then
+    if check_health "$expected_prev_image" "$container_name" "$url" "$svc"; then
       echo "Rollback successful for $svc"
       return 1
     fi
+  else
+    echo "No previous image available for $svc; rollback unavailable"
   fi
 
   echo "Rollback failed for $svc"

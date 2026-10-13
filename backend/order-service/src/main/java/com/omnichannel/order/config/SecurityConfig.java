@@ -26,7 +26,8 @@ public class SecurityConfig {
                 .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 .and()
                 .authorizeHttpRequests(authz -> authz
-                        .requestMatchers("/health", "/health/**", "/actuator/**").permitAll()
+                        // Allow health checks and actuator endpoints without authentication
+                        .requestMatchers("/health", "/health/**", "/actuator/health", "/actuator/health/**", "/actuator/info", "/actuator/**").permitAll()
                         .requestMatchers("/api/inventory/*/public").permitAll()
                         .anyRequest().authenticated()
                 )
