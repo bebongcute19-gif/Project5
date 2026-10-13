@@ -89,7 +89,7 @@ class OrderServiceTest {
         
         when(cartService.getCart(testCustomerId)).thenReturn(cartDTO);
         when(inventoryService.reserveInventory(any(UUID.class), anyString(), anyInt())).thenReturn(true);
-        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(orderRepository.saveAndFlush(any(Order.class))).thenReturn(savedOrder);
         doNothing().when(cartService).clearCart(testCustomerId);
         
         // When
@@ -102,7 +102,7 @@ class OrderServiceTest {
         assertTrue(result.getOrderNumber().startsWith("ORD-"));
         verify(cartService).getCart(testCustomerId);
         verify(inventoryService).reserveInventory(any(UUID.class), anyString(), anyInt());
-        verify(orderRepository).save(any(Order.class));
+        verify(orderRepository).saveAndFlush(any(Order.class));
         verify(cartService).clearCart(testCustomerId);
     }
     
