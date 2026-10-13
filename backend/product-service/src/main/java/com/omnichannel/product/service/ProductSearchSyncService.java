@@ -3,7 +3,7 @@ package com.omnichannel.product.service;
 public interface ProductSearchSyncService {
 
     /**
-     * Process pending outbox events and sync to Elasticsearch
+     * Process pending outbox events for product search index consistency (PostgreSQL-native)
      */
     void processPendingEvents();
 

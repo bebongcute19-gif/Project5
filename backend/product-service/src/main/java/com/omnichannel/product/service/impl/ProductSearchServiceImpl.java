@@ -2,23 +2,24 @@ package com.omnichannel.product.service.impl;
 
 import com.omnichannel.product.dto.response.ProductResponse;
 import com.omnichannel.product.dto.response.ProductVariantResponse;
-import com.omnichannel.product.entity.Brand;
-import com.omnichannel.product.entity.Category;
 import com.omnichannel.product.entity.Product;
 import com.omnichannel.product.entity.ProductVariant;
-import com.omnichannel.product.entity.search.ProductSearchDocument;
 import com.omnichannel.product.exception.ResourceNotFoundException;
 import com.omnichannel.product.repository.BrandRepository;
 import com.omnichannel.product.repository.CategoryRepository;
 import com.omnichannel.product.repository.ProductRepository;
 import com.omnichannel.product.repository.ProductVariantRepository;
-import com.omnichannel.product.repository.search.ProductSearchRepository;
 import com.omnichannel.product.service.ProductSearchService;
+import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -33,14 +34,12 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class ProductSearchServiceImpl implements ProductSearchService {
 
-    private final ProductSearchRepository searchRepository;
     private final ProductRepository productRepository;
     private final ProductVariantRepository variantRepository;
     private final CategoryRepository categoryRepository;
     private final BrandRepository brandRepository;
 
     private static final String STATUS_ACTIVE = "ACTIVE";
-    private static final int DEFAULT_BATCH_SIZE = 100;
 
     @Override
     public Page<ProductResponse> searchProducts(
@@ -50,208 +49,137 @@ public class ProductSearchServiceImpl implements ProductSearchService {
             Double minPrice,
             Double maxPrice,
             Pageable pageable) {
-
-        try {
-            // First, search in Elasticsearch for ACTIVE products only
-            Page<ProductSearchDocument> esResults = performElasticsearchSearch(
-                    keyword, categoryId, brandId, minPrice, maxPrice, pageable);
-
-            // Convert ES documents back to ProductResponse using PostgreSQL as source of truth
-            List<ProductResponse> productResponses = esResults.getContent().stream()
-                    .map(doc -> {
-                        try {
-                            UUID productId = UUID.fromString(doc.getProductId());
-                            return productRepository.findById(productId)
-                                    .filter(p -> STATUS_ACTIVE.equals(p.getStatus()))
-                                    .map(this::mapToResponse)
-                                    .orElse(null);
-                        } catch (IllegalArgumentException e) {
-                            log.warn("Invalid product ID in search result: {}", doc.getProductId());
-                            return null;
-                        }
-                    })
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toList());
-
-            return new PageImpl<>(productResponses, pageable, esResults.getTotalElements());
-        } catch (Exception e) {
-            log.error("Error searching products in Elasticsearch, falling back to PostgreSQL", e);
-            return fallbackPostgresSearch(keyword, categoryId, brandId, minPrice, maxPrice, pageable);
-        }
+        return searchProducts(keyword, categoryId, brandId, minPrice, maxPrice, STATUS_ACTIVE, pageable);
     }
 
-    private Page<ProductSearchDocument> performElasticsearchSearch(
+    @Override
+    public Page<ProductResponse> searchProducts(
             String keyword,
             String categoryId,
             String brandId,
             Double minPrice,
             Double maxPrice,
+            String status,
             Pageable pageable) {
 
-        // Simple approach: fetch and filter ACTIVE products
-        // For production, use ElasticsearchRepository with custom queries via QueryBuilders
-        if (StringUtils.hasText(categoryId) && StringUtils.hasText(brandId)) {
-            return searchRepository.findByCategoryIdAndBrandIdAndStatus(categoryId, brandId, STATUS_ACTIVE, pageable);
-        } else if (StringUtils.hasText(categoryId)) {
-            return searchRepository.findByCategoryIdAndStatus(categoryId, STATUS_ACTIVE, pageable);
-        } else if (StringUtils.hasText(brandId)) {
-            return searchRepository.findByBrandIdAndStatus(brandId, STATUS_ACTIVE, pageable);
-        } else {
-            return searchRepository.findByStatus(STATUS_ACTIVE, pageable);
+        Specification<Product> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            // 1. Filter by product status (defaults to ACTIVE for public catalog)
+            if (StringUtils.hasText(status)) {
+                predicates.add(cb.equal(root.get("status"), status.trim()));
+            }
+
+            // 2. Full-text keyword search across name, description, and slug
+            if (StringUtils.hasText(keyword)) {
+                String pattern = "%" + keyword.toLowerCase().trim() + "%";
+                Predicate nameMatch = cb.like(cb.lower(root.get("name")), pattern);
+                Predicate descMatch = cb.like(cb.lower(root.get("description")), pattern);
+                Predicate slugMatch = cb.like(cb.lower(root.get("slug")), pattern);
+                predicates.add(cb.or(nameMatch, descMatch, slugMatch));
+            }
+
+            // 3. Category filter
+            if (StringUtils.hasText(categoryId)) {
+                try {
+                    UUID catUuid = UUID.fromString(categoryId.trim());
+                    predicates.add(cb.equal(root.get("categoryId"), catUuid));
+                } catch (IllegalArgumentException e) {
+                    log.warn("Invalid categoryId format: {}", categoryId);
+                }
+            }
+
+            // 4. Brand filter
+            if (StringUtils.hasText(brandId)) {
+                try {
+                    UUID brandUuid = UUID.fromString(brandId.trim());
+                    predicates.add(cb.equal(root.get("brandId"), brandUuid));
+                } catch (IllegalArgumentException e) {
+                    log.warn("Invalid brandId format: {}", brandId);
+                }
+            }
+
+            // 5. Price range filter across active product variants
+            if (minPrice != null || maxPrice != null) {
+                Subquery<UUID> variantSubquery = query.subquery(UUID.class);
+                Root<ProductVariant> variantRoot = variantSubquery.from(ProductVariant.class);
+                variantSubquery.select(variantRoot.get("productId"));
+
+                List<Predicate> variantPredicates = new ArrayList<>();
+                variantPredicates.add(cb.isTrue(variantRoot.get("active")));
+
+                // Effective price: salePrice if present and > 0, otherwise regularPrice
+                Expression<BigDecimal> effectivePrice = cb.<BigDecimal>selectCase()
+                        .when(cb.and(cb.isNotNull(variantRoot.get("salePrice")),
+                                     cb.greaterThan(variantRoot.get("salePrice"), BigDecimal.ZERO)),
+                              variantRoot.get("salePrice"))
+                        .otherwise(variantRoot.get("regularPrice"));
+
+                if (minPrice != null) {
+                    variantPredicates.add(cb.greaterThanOrEqualTo(effectivePrice, BigDecimal.valueOf(minPrice)));
+                }
+                if (maxPrice != null) {
+                    variantPredicates.add(cb.lessThanOrEqualTo(effectivePrice, BigDecimal.valueOf(maxPrice)));
+                }
+
+                variantSubquery.where(variantPredicates.toArray(new Predicate[0]));
+                predicates.add(root.get("id").in(variantSubquery));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        Page<Product> productPage = productRepository.findAll(spec, pageable);
+
+        if (productPage.isEmpty()) {
+            return Page.empty(pageable);
         }
-    }
 
-    private Page<ProductResponse> fallbackPostgresSearch(
-            String keyword,
-            String categoryId,
-            String brandId,
-            Double minPrice,
-            Double maxPrice,
-            Pageable pageable) {
+        // Batch fetch variants to avoid N+1 queries
+        List<UUID> productIds = productPage.getContent().stream()
+                .map(Product::getId)
+                .collect(Collectors.toList());
 
-        // Fallback to PostgreSQL full-text search if Elasticsearch is unavailable
-        UUID catId = StringUtils.hasText(categoryId) ? UUID.fromString(categoryId) : null;
-        UUID brnId = StringUtils.hasText(brandId) ? UUID.fromString(brandId) : null;
+        Map<UUID, List<ProductVariant>> variantsByProductId = variantRepository.findByProductIdIn(productIds).stream()
+                .collect(Collectors.groupingBy(ProductVariant::getProductId));
 
-        Page<Product> productPage;
-        if (catId != null && brnId != null) {
-            productPage = productRepository.findByCategoryIdAndBrandIdAndStatus(catId, brnId, STATUS_ACTIVE, pageable);
-        } else if (catId != null) {
-            productPage = productRepository.findByCategoryIdAndStatus(catId, STATUS_ACTIVE, pageable);
-        } else if (brnId != null) {
-            productPage = productRepository.findByBrandIdAndStatus(brnId, STATUS_ACTIVE, pageable);
-        } else {
-            productPage = productRepository.findByStatus(STATUS_ACTIVE, pageable);
-        }
+        List<ProductResponse> responses = productPage.getContent().stream()
+                .map(product -> mapToResponse(product, variantsByProductId.getOrDefault(product.getId(), Collections.emptyList())))
+                .collect(Collectors.toList());
 
-        return productPage.map(this::mapToResponse);
+        return new PageImpl<>(responses, pageable, productPage.getTotalElements());
     }
 
     @Override
     @Transactional
     public void indexProduct(String productId) {
-        try {
-            UUID id = UUID.fromString(productId);
-            Product product = productRepository.findById(id)
-                    .orElseThrow(() -> new ResourceNotFoundException("Product not found: " + productId));
-
-            ProductSearchDocument doc = buildSearchDocument(product);
-            searchRepository.save(doc);
-            log.info("Product indexed successfully: {}", productId);
-        } catch (Exception e) {
-            log.error("Error indexing product: {}", productId, e);
-            throw new RuntimeException("Failed to index product", e);
-        }
+        UUID id = UUID.fromString(productId);
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found: " + productId));
+        log.info("Product verified in PostgreSQL search index: id={}, status={}", product.getId(), product.getStatus());
     }
 
     @Override
     @Transactional
     public void removeProductFromIndex(String productId) {
-        try {
-            searchRepository.deleteByProductId(productId);
-            log.info("Product removed from index: {}", productId);
-        } catch (Exception e) {
-            log.error("Error removing product from index: {}", productId, e);
-        }
+        log.info("Product search removal managed natively in PostgreSQL: productId={}", productId);
     }
 
     @Override
     @Transactional
     public void reindexAllProducts() {
-        reindexAllProductsWithBatching(DEFAULT_BATCH_SIZE);
+        long activeCount = productRepository.count((root, query, cb) -> cb.equal(root.get("status"), STATUS_ACTIVE));
+        log.info("PostgreSQL native search active; verified {} active products in database.", activeCount);
     }
 
     @Override
     @Transactional
     public void reindexAllProductsWithBatching(int batchSize) {
-        try {
-            log.info("Starting full reindex of products with batch size: {}", batchSize);
-            
-            // Delete all existing documents first
-            searchRepository.deleteAll();
-            log.info("Cleared existing index");
-
-            // Fetch and index products in batches
-            int page = 0;
-            boolean hasMore = true;
-            
-            while (hasMore) {
-                List<Product> batch = productRepository.findAll()
-                        .stream()
-                        .filter(p -> STATUS_ACTIVE.equals(p.getStatus()))
-                        .skip((long) page * batchSize)
-                        .limit(batchSize)
-                        .collect(Collectors.toList());
-
-                if (batch.isEmpty()) {
-                    hasMore = false;
-                } else {
-                    List<ProductSearchDocument> docs = batch.stream()
-                            .map(this::buildSearchDocument)
-                            .collect(Collectors.toList());
-                    
-                    searchRepository.saveAll(docs);
-                    log.info("Indexed batch: {} products (page: {})", batch.size(), page);
-                    page++;
-                }
-            }
-
-            log.info("Reindex completed successfully");
-        } catch (Exception e) {
-            log.error("Error during reindex", e);
-            throw new RuntimeException("Failed to reindex products", e);
-        }
+        long activeCount = productRepository.count((root, query, cb) -> cb.equal(root.get("status"), STATUS_ACTIVE));
+        log.info("PostgreSQL native search batch verification complete (batchSize={}). Total active products: {}", batchSize, activeCount);
     }
 
-    private ProductSearchDocument buildSearchDocument(Product product) {
-        List<ProductVariant> variants = variantRepository.findByProductId(product.getId());
-        
-        Double minPrice = null;
-        Double maxPrice = null;
-        
-        if (!variants.isEmpty()) {
-            List<BigDecimal> prices = new ArrayList<>();
-            for (ProductVariant v : variants) {
-                if (v.getSalePrice() != null && v.getSalePrice().compareTo(BigDecimal.ZERO) > 0) {
-                    prices.add(v.getSalePrice());
-                } else {
-                    prices.add(v.getRegularPrice());
-                }
-            }
-            if (!prices.isEmpty()) {
-                minPrice = prices.stream().min(BigDecimal::compareTo).orElse(BigDecimal.ZERO).doubleValue();
-                maxPrice = prices.stream().max(BigDecimal::compareTo).orElse(BigDecimal.ZERO).doubleValue();
-            }
-        }
-
-        String categoryName = categoryRepository.findById(product.getCategoryId())
-                .map(Category::getName)
-                .orElse("");
-
-        String brandName = brandRepository.findById(product.getBrandId())
-                .map(Brand::getName)
-                .orElse("");
-
-        return ProductSearchDocument.builder()
-                .id(product.getId().toString())
-                .productId(product.getId().toString())
-                .name(product.getName())
-                .slug(product.getSlug())
-                .description(product.getDescription())
-                .categoryId(product.getCategoryId().toString())
-                .categoryName(categoryName)
-                .brandId(product.getBrandId().toString())
-                .brandName(brandName)
-                .status(product.getStatus())
-                .minPrice(minPrice)
-                .maxPrice(maxPrice)
-                .createdAt(product.getCreatedAt())
-                .updatedAt(product.getUpdatedAt())
-                .build();
-    }
-
-    private ProductResponse mapToResponse(Product product) {
-        List<ProductVariant> variants = variantRepository.findByProductId(product.getId());
+    private ProductResponse mapToResponse(Product product, List<ProductVariant> variants) {
         List<ProductVariantResponse> variantResponses = variants.stream()
                 .map(v -> ProductVariantResponse.builder()
                         .id(v.getId().toString())

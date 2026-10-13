@@ -18,6 +18,8 @@ subprojects {
     apply plugin: 'org.springframework.boot'
     apply plugin: 'io.spring.dependency-management'
 
+    layout.buildDirectory = layout.projectDirectory.dir("build-app")
+
     java {
         toolchain {
             languageVersion = JavaLanguageVersion.of(17)
@@ -38,5 +40,14 @@ subprojects {
 
     test {
         useJUnitPlatform()
+    }
+
+    tasks.matching { it.name == 'bootJar' }.configureEach {
+        doLast {
+            copy {
+                from layout.buildDirectory.dir("libs")
+                into file("build/libs")
+            }
+        }
     }
 }

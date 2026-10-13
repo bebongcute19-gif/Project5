@@ -19,6 +19,8 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
 
     List<ProductVariant> findByProductId(UUID productId);
 
+    List<ProductVariant> findByProductIdIn(java.util.Collection<UUID> productIds);
+
     List<ProductVariant> findByProductIdAndActive(UUID productId, Boolean active);
 
     long deleteByProductId(UUID productId);

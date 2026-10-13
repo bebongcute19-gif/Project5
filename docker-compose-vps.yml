@@ -15,7 +15,19 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    mem_limit: 256m
+    mem_limit: 512m
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - project5-network
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 128m
 
   identity-service:
     image: ghcr.io/bebongcute19-gif/project5-identity-service:${IMAGE_TAG:-latest}
@@ -37,6 +49,153 @@ services:
     networks:
       - project5-network
     mem_limit: 384m
+
+  product-service:
+    image: ghcr.io/bebongcute19-gif/project5-product-service:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: 8082
+      DB_HOST: postgresql-db
+      DB_PORT: 5432
+      DB_NAME: product_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx384m"
+    ports:
+      - "127.0.0.1:8082:8082"
+    depends_on:
+      postgresql-db:
+        condition: service_healthy
+    networks:
+      - project5-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8082/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    mem_limit: 512m
+
+  order-service:
+    image: ghcr.io/bebongcute19-gif/project5-order-service:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: 8083
+      DB_HOST: postgresql-db
+      DB_PORT: 5432
+      DB_NAME: order_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx384m"
+    ports:
+      - "127.0.0.1:8083:8083"
+    depends_on:
+      postgresql-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - project5-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8083/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    mem_limit: 512m
+
+  payment-service:
+    image: ghcr.io/bebongcute19-gif/project5-payment-service:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: 8084
+      DB_HOST: postgresql-db
+      DB_PORT: 5432
+      DB_NAME: payment_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx256m"
+    ports:
+      - "127.0.0.1:8084:8084"
+    depends_on:
+      postgresql-db:
+        condition: service_healthy
+    networks:
+      - project5-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8084/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    mem_limit: 384m
+
+  notification-service:
+    image: ghcr.io/bebongcute19-gif/project5-notification-service:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: 8085
+      DB_HOST: postgresql-db
+      DB_PORT: 5432
+      DB_NAME: notification_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JAVA_TOOL_OPTIONS: "-Xms64m -Xmx192m"
+    ports:
+      - "127.0.0.1:8085:8085"
+    depends_on:
+      postgresql-db:
+        condition: service_healthy
+    networks:
+      - project5-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8085/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    mem_limit: 256m
+
+  api-gateway:
+    image: ghcr.io/bebongcute19-gif/project5-api-gateway:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PORT: 8080
+      IDENTITY_SERVICE_HOST: identity-service
+      IDENTITY_SERVICE_PORT: 8081
+      PRODUCT_SERVICE_HOST: product-service
+      PRODUCT_SERVICE_PORT: 8082
+      ORDER_SERVICE_HOST: order-service
+      ORDER_SERVICE_PORT: 8083
+      PAYMENT_SERVICE_HOST: payment-service
+      PAYMENT_SERVICE_PORT: 8084
+      NOTIFICATION_SERVICE_HOST: notification-service
+      NOTIFICATION_SERVICE_PORT: 8085
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET}
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx384m"
+    ports:
+      - "0.0.0.0:80:8080"
+    depends_on:
+      identity-service:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - project5-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+    mem_limit: 512m
 
 networks:
   project5-network:

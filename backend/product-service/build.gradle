@@ -2,12 +2,13 @@ plugins {
     id 'com.google.protobuf' version '0.9.4'
 }
 
+layout.buildDirectory = layout.projectDirectory.dir("build-app")
+
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     runtimeOnly 'org.postgresql:postgresql'
     implementation 'org.flywaydb:flyway-core:9.22.3'
-    implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.boot:spring-boot-starter-security'
@@ -49,6 +50,15 @@ protobuf {
             task.plugins {
                 grpc {}
             }
+        }
+    }
+}
+
+tasks.named('bootJar') {
+    doLast {
+        copy {
+            from layout.buildDirectory.dir("libs")
+            into file("build/libs")
         }
     }
 }

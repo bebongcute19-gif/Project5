@@ -34,6 +34,7 @@ jobs:
           cp docker-compose-vps.yml deploy-package/
           cp scripts/init-postgres-dbs.sql deploy-package/scripts/
           cp scripts/deploy-identity.sh deploy-package/scripts/
+          cp scripts/deploy-all.sh deploy-package/scripts/
 
       - name: Copy deployment files to VPS
         uses: appleboy/scp-action@v1
@@ -42,7 +43,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
-          source: "deploy-package/docker-compose-vps.yml,deploy-package/scripts/init-postgres-dbs.sql,deploy-package/scripts/deploy-identity.sh"
+          source: "deploy-package/docker-compose-vps.yml,deploy-package/scripts/init-postgres-dbs.sql,deploy-package/scripts/deploy-identity.sh,deploy-package/scripts/deploy-all.sh"
           target: "/opt/project5"
           strip_components: 1
           overwrite: true
@@ -62,3 +63,19 @@ jobs:
             set -e
             cd /opt/project5
             bash scripts/deploy-identity.sh
+
+      - name: Deploy remaining services
+        uses: appleboy/ssh-action@v1
+        env:
+          IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          envs: IMAGE_TAG
+          script_stop: true
+          script: |
+            set -e
+            cd /opt/project5
+            bash scripts/deploy-all.sh

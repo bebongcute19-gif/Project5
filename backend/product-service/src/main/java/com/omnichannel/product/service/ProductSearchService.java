@@ -26,6 +26,18 @@ public interface ProductSearchService {
             Pageable pageable);
 
     /**
+     * Search products with full-text search, filters, and custom status
+     */
+    Page<ProductResponse> searchProducts(
+            String keyword,
+            String categoryId,
+            String brandId,
+            Double minPrice,
+            Double maxPrice,
+            String status,
+            Pageable pageable);
+
+    /**
      * Index a product document for search
      *
      * @param productId Product ID to index

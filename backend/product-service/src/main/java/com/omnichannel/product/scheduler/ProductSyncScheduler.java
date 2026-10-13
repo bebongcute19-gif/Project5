@@ -18,7 +18,7 @@ public class ProductSyncScheduler {
     private final ProductSearchSyncService productSearchSyncService;
 
     /**
-     * Process pending events and sync to Elasticsearch every 5 seconds
+     * Process pending outbox events every 5 seconds
      * Batch size: 10 events per batch
      */
     @Scheduled(fixedDelay = 5000, initialDelay = 10000)

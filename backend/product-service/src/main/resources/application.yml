@@ -32,15 +32,6 @@ spring:
     baseline-on-migrate: true
     locations: classpath:db/migration
 
-  elasticsearch:
-    uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
-    connection-timeout: 5s
-    socket-timeout: 30s
-
-  data:
-    elasticsearch:
-      repositories:
-        enabled: true
 
 grpc:
   server:

@@ -208,7 +208,7 @@ public class ProductServiceImpl implements ProductService {
             });
         }
 
-        // Publish event to outbox for Elasticsearch sync
+        // Publish event to product search event outbox (PostgreSQL-native search)
         eventPublisher.publishProductCreated(savedProduct.getId());
 
         log.info("Product created with id: {}, slug: {}", savedProduct.getId(), savedProduct.getSlug());

@@ -2,10 +2,9 @@ package com.omnichannel.product.service.impl;
 
 import com.omnichannel.product.entity.Product;
 import com.omnichannel.product.entity.ProductEvent;
-import com.omnichannel.product.entity.search.ProductSearchDocument;
 import com.omnichannel.product.repository.ProductEventRepository;
 import com.omnichannel.product.repository.ProductRepository;
-import com.omnichannel.product.repository.search.ProductSearchRepository;
+import com.omnichannel.product.service.ProductSearchService;
 import com.omnichannel.product.service.ProductSearchSyncService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,8 +24,7 @@ public class ProductSearchSyncServiceImpl implements ProductSearchSyncService {
 
     private final ProductEventRepository eventRepository;
     private final ProductRepository productRepository;
-    private final ProductSearchRepository searchRepository;
-    private final ProductSearchServiceImpl searchService;
+    private final ProductSearchService searchService;
 
     private static final int DEFAULT_BATCH_SIZE = 10;
     private static final String STATUS_ACTIVE = "ACTIVE";
@@ -97,9 +95,9 @@ public class ProductSearchSyncServiceImpl implements ProductSearchSyncService {
 
         if (STATUS_ACTIVE.equals(product.getStatus())) {
             searchService.indexProduct(productId.toString());
-            log.info("Product indexed after creation: {}", productId);
+            log.info("Product processed after creation: {}", productId);
         } else {
-            log.debug("Product not indexed - status is {}, not ACTIVE: {}", product.getStatus(), productId);
+            log.debug("Product status is {}, not ACTIVE: {}", product.getStatus(), productId);
         }
     }
 
@@ -109,13 +107,11 @@ public class ProductSearchSyncServiceImpl implements ProductSearchSyncService {
                 .orElseThrow(() -> new RuntimeException("Product not found: " + productId));
 
         if (STATUS_ACTIVE.equals(product.getStatus())) {
-            // Re-index updated product
             searchService.indexProduct(productId.toString());
-            log.info("Product re-indexed after update: {}", productId);
+            log.info("Product updated and verified: {}", productId);
         } else {
-            // If product is no longer ACTIVE, remove from index
             searchService.removeProductFromIndex(productId.toString());
-            log.info("Product removed from index (no longer ACTIVE): {}", productId);
+            log.info("Product removed from active search (no longer ACTIVE): {}", productId);
         }
     }
 
@@ -125,24 +121,18 @@ public class ProductSearchSyncServiceImpl implements ProductSearchSyncService {
                 .orElseThrow(() -> new RuntimeException("Product not found: " + productId));
 
         if (STATUS_ACTIVE.equals(product.getStatus())) {
-            // Product became ACTIVE, index it
             searchService.indexProduct(productId.toString());
-            log.info("Product indexed after status change to ACTIVE: {}", productId);
-        } else if (STATUS_ARCHIVED.equals(product.getStatus())) {
-            // Product was archived/deleted, remove from index
-            searchService.removeProductFromIndex(productId.toString());
-            log.info("Product removed from index after archival: {}", productId);
+            log.info("Product marked active: {}", productId);
         } else {
-            // Product status changed but not to ACTIVE - remove if exists
             searchService.removeProductFromIndex(productId.toString());
-            log.info("Product removed from index (status changed to {})", product.getStatus());
+            log.info("Product removed from active search (status is {}): {}", product.getStatus(), productId);
         }
     }
 
     private void handleProductDeleted(ProductEvent event) {
         UUID productId = event.getProductId();
         searchService.removeProductFromIndex(productId.toString());
-        log.info("Product removed from index after deletion: {}", productId);
+        log.info("Product removed from search after deletion: {}", productId);
     }
 
     private void handleVariantPriceChanged(ProductEvent event) {
@@ -150,10 +140,9 @@ public class ProductSearchSyncServiceImpl implements ProductSearchSyncService {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new RuntimeException("Product not found: " + productId));
 
-        // Re-index to update price range
         if (STATUS_ACTIVE.equals(product.getStatus())) {
             searchService.indexProduct(productId.toString());
-            log.info("Product re-indexed after variant price change: {}", productId);
+            log.info("Product price updated in search: {}", productId);
         }
     }
 

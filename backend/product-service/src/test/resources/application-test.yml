@@ -25,15 +25,6 @@ spring:
   flyway:
     enabled: false
 
-  elasticsearch:
-    uris: http://localhost:9200
-    connection-timeout: 1s
-    socket-timeout: 10s
-
-  data:
-    elasticsearch:
-      repositories:
-        enabled: false
 
 grpc:
   server:

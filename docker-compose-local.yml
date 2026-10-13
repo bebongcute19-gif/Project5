@@ -8,7 +8,6 @@ volumes:
   postgres_data:
   redis_data:
   rabbitmq_data:
-  elasticsearch_data:
 
 services:
   # Infrastructure Services Only
@@ -62,24 +61,5 @@ services:
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
-      timeout: 5s
-      retries: 5
-
-  elasticsearch:
-    image: elasticsearch:8.11.3
-    container_name: elasticsearch
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=${ELASTIC_JAVA_OPTS}"
-    ports:
-      - "${ELASTICSEARCH_PORT}:9200"
-    volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
-    networks:
-      - omnichannel-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cat/health || exit 1"]
-      interval: 15s
       timeout: 5s
       retries: 5
