@@ -2,10 +2,12 @@
 name: Project5 CD
 
 on:
-  workflow_run:
-    workflows: ["Project5 Docker Publish"]
-    types: [completed]
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Full 40-character commit SHA (hex) for Docker images to deploy'
+        required: true
+        default: ''
 
 permissions:
   contents: read
@@ -16,64 +18,259 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event.workflow_run.conclusion == 'success'
+    name: Manual safe deploy to VPS
     runs-on: ubuntu-latest
+    env:
+      IMAGE_TAG: ${{ inputs.image_tag }}
+      REPO_OWNER: ${{ github.repository_owner }}
 
     steps:
-      - name: Checkout published commit
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-
-      - name: Test rollback logic
-        run: bash scripts/tests/test-rollback.sh
-
-      - name: Prepare deployment files
+      - name: Validate image_tag input
         run: |
-          mkdir -p deploy-package/scripts
-          cp docker-compose-vps.yml deploy-package/
-          cp scripts/init-postgres-dbs.sql deploy-package/scripts/
-          cp scripts/deploy-identity.sh deploy-package/scripts/
-          cp scripts/deploy-all.sh deploy-package/scripts/
+          echo "Validating IMAGE_TAG=${IMAGE_TAG}"
+          if [[ ! "${IMAGE_TAG}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "ERROR: image_tag must be a 40-character hexadecimal commit SHA"
+            exit 1
+          fi
 
-      - name: Copy deployment files to VPS
-        uses: appleboy/scp-action@v1
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: 22
-          source: "deploy-package/docker-compose-vps.yml,deploy-package/scripts/init-postgres-dbs.sql,deploy-package/scripts/deploy-identity.sh,deploy-package/scripts/deploy-all.sh"
-          target: "/opt/project5"
-          strip_components: 1
-          overwrite: true
-
-      - name: Deploy Identity Service with Rollback
+      - name: Deploy api-gateway and order-service on VPS (safe, sequential)
         uses: appleboy/ssh-action@v1
-        env:
-          IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
-          envs: IMAGE_TAG
+          envs: IMAGE_TAG,REPO_OWNER
           script: |
-            set -e
+            set -u -o pipefail
             cd /opt/project5
-            bash scripts/deploy-identity.sh
 
-      - name: Deploy remaining services
-        uses: appleboy/ssh-action@v1
-        env:
-          IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: 22
-          envs: IMAGE_TAG
-          script: |
-            set -e
-            cd /opt/project5
-            bash scripts/deploy-all.sh
+            TARGET_TAG="${IMAGE_TAG}"
+            echo "TARGET_TAG=${TARGET_TAG} (immutable for this run)"
+
+            # Ensure compose file exists
+            if [ ! -f docker-compose-vps.yml ]; then
+              echo "docker-compose-vps.yml not found in /opt/project5"
+              exit 1
+            fi
+
+            # Record current images for both services BEFORE any change
+            ORDER_CID=$(docker compose -f docker-compose-vps.yml ps -q order-service || true)
+            if [ -n "$ORDER_CID" ]; then
+              ORDER_OLD_IMAGE=$(docker inspect --format='{{.Config.Image}}' "$ORDER_CID" || true)
+              ORDER_OLD_TAG="${ORDER_OLD_IMAGE##*:}"
+            else
+              ORDER_OLD_IMAGE=""
+              ORDER_OLD_TAG=""
+            fi
+            echo "Order Service current image: ${ORDER_OLD_IMAGE:-<none>}"
+
+            API_CID=$(docker compose -f docker-compose-vps.yml ps -q api-gateway || true)
+            if [ -n "$API_CID" ]; then
+              API_OLD_IMAGE=$(docker inspect --format='{{.Config.Image}}' "$API_CID" || true)
+              API_OLD_TAG="${API_OLD_IMAGE##*:}"
+            else
+              API_OLD_IMAGE=""
+              API_OLD_TAG=""
+            fi
+            echo "API Gateway current image: ${API_OLD_IMAGE:-<none>}"
+
+            # Ensure both old images exist locally before attempting any change
+            if [ -z "$ORDER_OLD_IMAGE" ] || ! docker image inspect "$ORDER_OLD_IMAGE" >/dev/null 2>&1 ; then
+              echo "ERROR: Order Service old image not found locally: ${ORDER_OLD_IMAGE:-<none>}"
+              exit 1
+            fi
+            if [ -z "$API_OLD_IMAGE" ] || ! docker image inspect "$API_OLD_IMAGE" >/dev/null 2>&1 ; then
+              echo "ERROR: API Gateway old image not found locally: ${API_OLD_IMAGE:-<none>}"
+              exit 1
+            fi
+
+            # Track which services were updated or in-progress (for rollback)
+            UPDATED_SERVICES=()
+            SUCCESS_SERVICES=()
+
+            # Centralized rollback function
+            rollback_service() {
+              svc="$1"
+              old_image="$2"
+              old_tag="$3"
+              echo "Rolling back $svc to $old_image"
+              if [ -z "$old_image" ]; then
+                echo "No previous image recorded for $svc; cannot rollback"
+                return 1
+              fi
+              # Ensure old image is present locally; rollback must not pull from registry
+              if ! docker image inspect "$old_image" >/dev/null 2>&1; then
+                echo "Old image $old_image not found locally on VPS; cannot rollback with --pull never"
+                return 1
+              fi
+
+              # Perform rollback using local image only
+              IMAGE_TAG="$old_tag" docker compose -f docker-compose-vps.yml up -d --no-deps --pull never "$svc"
+              if [ $? -ne 0 ]; then
+                echo "docker compose up (rollback) failed for $svc"
+                return 1
+              fi
+
+              # verify image
+              CID=$(docker compose -f docker-compose-vps.yml ps -q "$svc" || true)
+              if [ -z "$CID" ]; then
+                echo "Rollback failed: $svc container not found after rollback"
+                return 1
+              fi
+              CUR_IMAGE=$(docker inspect --format='{{.Config.Image}}' "$CID" || true)
+              if [ "$CUR_IMAGE" != "$old_image" ]; then
+                echo "Rollback failed: $svc running $CUR_IMAGE (expected $old_image)"
+                return 1
+              fi
+
+              # verify health up to 60s; require HTTP 200 and JSON status UP
+              case "$svc" in
+                api-gateway)
+                  HEALTH_URLS=("http://127.0.0.1:80/actuator/health")
+                  ;;
+                order-service)
+                  HEALTH_URLS=("http://127.0.0.1:8083/actuator/health")
+                  ;;
+                *)
+                  HEALTH_URLS=("http://127.0.0.1:8080/actuator/health")
+                  ;;
+              esac
+
+              echo "Waiting for rollback health for $svc (60s)"
+              roll_ok=0
+              end=$(( $(date +%s) + 60 ))
+              while [ $(date +%s) -le $end ]; do
+                for url in "${HEALTH_URLS[@]}"; do
+                  status_code=$(curl -sS -m 5 -o /tmp/health.json -w "%{http_code}" "$url" 2>/dev/null) || status_code="000"
+                  if [ "$status_code" = "200" ]; then
+                    if grep -Eq '"status"\s*:\s*"UP"' /tmp/health.json; then
+                      roll_ok=1
+                      break 2
+                    fi
+                  fi
+                done
+                sleep 2
+              done
+
+              if [ $roll_ok -ne 1 ]; then
+                echo "Rollback health check failed for $svc"
+                return 1
+              fi
+              echo "Rollback for $svc successful"
+              return 0
+            }
+
+            # Centralized failure handler: rollback all updated services in reverse order
+            on_failure() {
+              echo "Failure detected: $1"
+              # rollback in reverse order
+              for (( idx=${#UPDATED_SERVICES[@]}-1 ; idx>=0 ; idx-- )) ; do
+                s=${UPDATED_SERVICES[$idx]}
+                if [ "$s" = "order-service" ]; then
+                  rollback_service "$s" "$ORDER_OLD_IMAGE" "$ORDER_OLD_TAG" || true
+                elif [ "$s" = "api-gateway" ]; then
+                  rollback_service "$s" "$API_OLD_IMAGE" "$API_OLD_TAG" || true
+                fi
+              done
+              echo "Exiting with failure"
+              exit 1
+            }
+
+            # Begin sequential deploys: order-service then api-gateway
+            for SERVICE in order-service api-gateway; do
+              IMAGE_BASE="ghcr.io/${REPO_OWNER}/project5-${SERVICE}"
+              echo "\n--- Deploying $SERVICE -> ${IMAGE_BASE}:${TARGET_TAG} ---"
+
+              # Pull the new target image
+              docker pull "${IMAGE_BASE}:${TARGET_TAG}"
+              if [ $? -ne 0 ]; then
+                on_failure "docker pull failed for ${IMAGE_BASE}:${TARGET_TAG}"
+              fi
+
+              # Verify compose config contains the new image exactly
+              if ! IMAGE_TAG="${TARGET_TAG}" docker compose -f docker-compose-vps.yml config --images | grep -Fxq "${IMAGE_BASE}:${TARGET_TAG}"; then
+                on_failure "docker-compose-vps.yml does not reference ${IMAGE_BASE}:${TARGET_TAG}"
+              fi
+
+              # Record service as needing rollback BEFORE attempting to change it
+              UPDATED_SERVICES+=("$SERVICE")
+              echo "Recorded $SERVICE for potential rollback"
+
+              # Do not proceed to API Gateway unless Order Service is healthy
+              if [ "$SERVICE" = "api-gateway" ]; then
+                found=false
+                for s in "${SUCCESS_SERVICES[@]}"; do
+                  if [ "$s" = "order-service" ]; then found=true; break; fi
+                done
+                if [ "$found" != "true" ]; then
+                  on_failure "Order Service is not healthy; aborting API Gateway deploy"
+                fi
+              fi
+
+              # Deploy service using TARGET_TAG (immutable)
+              IMAGE_TAG="$TARGET_TAG" docker compose -f docker-compose-vps.yml up -d --no-deps --pull never "$SERVICE"
+              if [ $? -ne 0 ]; then
+                on_failure "docker compose up failed for $SERVICE"
+              fi
+
+              # Wait for container and verify image
+              start_ts=$(date +%s)
+              deadline=$((start_ts + 90))
+              NEW_CID=""
+              while [ $(date +%s) -le $deadline ]; do
+                NEW_CID=$(docker compose -f docker-compose-vps.yml ps -q "$SERVICE" || true)
+                if [ -n "$NEW_CID" ]; then
+                  break
+                fi
+                sleep 2
+              done
+              if [ -z "$NEW_CID" ]; then
+                on_failure "$SERVICE did not start within 90s"
+              fi
+
+              NEW_IMAGE=$(docker inspect --format='{{.Config.Image}}' "$NEW_CID" || true)
+              if [ "$NEW_IMAGE" != "${IMAGE_BASE}:${TARGET_TAG}" ]; then
+                on_failure "image mismatch for $SERVICE: got $NEW_IMAGE expected ${IMAGE_BASE}:${TARGET_TAG}"
+              fi
+
+              # Health check up to 90s
+              case "$SERVICE" in
+                api-gateway)
+                  HEALTH_URLS=("http://127.0.0.1:80/actuator/health")
+                  ;;
+                order-service)
+                  HEALTH_URLS=("http://127.0.0.1:8083/actuator/health")
+                  ;;
+                *)
+                  HEALTH_URLS=("http://127.0.0.1:8080/actuator/health")
+                  ;;
+              esac
+
+              echo "Waiting for health for $SERVICE (up to 90s)"
+              ok=0
+              end=$(( $(date +%s) + 90 ))
+              while [ $(date +%s) -le $end ]; do
+                for url in "${HEALTH_URLS[@]}"; do
+                  status_code=$(curl -sS -m 5 -o /tmp/health.json -w "%{http_code}" "$url" 2>/dev/null) || status_code="000"
+                  if [ "$status_code" = "200" ]; then
+                    if grep -Eq '"status"\s*:\s*"UP"' /tmp/health.json; then
+                      ok=1
+                      break 2
+                    fi
+                  fi
+                done
+                sleep 2
+              done
+
+              if [ $ok -ne 1 ]; then
+                on_failure "Health check failed for $SERVICE"
+              fi
+
+              # Mark service as successfully deployed
+              SUCCESS_SERVICES+=("$SERVICE")
+              echo "$SERVICE deployed and healthy"
+
+            done
+
+            echo "All specified services deployed successfully using TARGET_TAG ${TARGET_TAG}"
