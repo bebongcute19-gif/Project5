@@ -9,6 +9,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 
 import java.util.UUID;
 
@@ -17,9 +19,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
-@AutoConfigureMockMvc
-@org.springframework.test.context.TestPropertySource(properties = "jwt.secret=test-secret-key-0123456789")
+@WebMvcTest(controllers = com.omnichannel.order.controller.InventoryController.class)
+@Import(com.omnichannel.order.config.SecurityConfig.class)
 public class InventorySecurityTest {
 
     @Autowired
@@ -43,6 +44,12 @@ public class InventorySecurityTest {
 
     @MockBean
     private InventoryService inventoryService;
+
+    @MockBean
+    private com.omnichannel.order.repository.InventoryRepository inventoryRepository;
+
+    @MockBean
+    private com.omnichannel.order.security.SecurityContextUtil securityContextUtil;
 
     @Test
     void getSku_shouldBePublic() throws Exception {
