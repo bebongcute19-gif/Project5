@@ -19,8 +19,10 @@ public class RouteValidator {
             "/api/v1/categories/**",
             "/api/v1/brands",
             "/api/v1/brands/**",
+            "/api/v1/inventory/*",
             "/health",
             "/api/v1/health",
+            "/api/v1/auth/health",
             "/actuator/**",
             "/v3/api-docs/**",
             "/swagger-ui/**",
@@ -36,7 +38,8 @@ public class RouteValidator {
 
     private static final List<String> ADMIN_PATHS = List.of(
             "/api/v1/inventory",
-            "/api/v1/inventory/**"
+            "/api/v1/inventory/admin/**",
+            "/api/v1/inventory/adjust"
     );
 
     private static final List<String> ADMIN_MUTATING_PRODUCT_PATHS = List.of(
@@ -55,6 +58,12 @@ public class RouteValidator {
         if (HttpMethod.GET.equals(method)) {
             for (String pattern : PUBLIC_GET_ENDPOINTS) {
                 if (pathMatcher.match(pattern, path)) {
+                    // If path also matches an admin-only pattern, do not treat as public
+                    for (String adminPattern : ADMIN_PATHS) {
+                        if (pathMatcher.match(adminPattern, path)) {
+                            return false;
+                        }
+                    }
                     return true;
                 }
             }

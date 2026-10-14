@@ -29,6 +29,8 @@ class RouteValidatorTest {
         assertTrue(routeValidator.isPublic(MockServerHttpRequest.get("/api/v1/categories").build()));
         assertTrue(routeValidator.isPublic(MockServerHttpRequest.get("/api/v1/brands").build()));
         assertTrue(routeValidator.isPublic(MockServerHttpRequest.get("/health").build()));
+        // Inventory SKU read should be public
+        assertTrue(routeValidator.isPublic(MockServerHttpRequest.get("/api/v1/inventory/SKU-ABC-123").build()));
     }
 
     @Test
@@ -62,5 +64,7 @@ class RouteValidatorTest {
         assertFalse(routeValidator.isAdminOnly(MockServerHttpRequest.get("/api/v1/users/me/addresses").build()));
         assertFalse(routeValidator.isAdminOnly(MockServerHttpRequest.get("/api/v1/products").build()));
         assertFalse(routeValidator.isAdminOnly(MockServerHttpRequest.post("/api/v1/orders").build()));
+        // Inventory SKU read is not admin-only
+        assertFalse(routeValidator.isAdminOnly(MockServerHttpRequest.get("/api/v1/inventory/SKU-ABC-123").build()));
     }
 }
